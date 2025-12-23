@@ -1,0 +1,23 @@
+{
+    "name": "hrms-notifier",
+    "version": "1.0.0",
+    "description": "HRMS Attendance Notifier - Alerts when absent status is detected",
+    "main": "src/index.js",
+    "type": "module",
+    "scripts": {
+        "start": "node src/index.js",
+        "test": "node src/index.js --test",
+        "test-email": "node src/index.js --test-email"
+    },
+    "keywords": [
+        "hrms",
+        "attendance",
+        "notifier"
+    ],
+    "author": "Aravind S Narayan",
+    "license": "MIT",
+    "dependencies": {
+        "dotenv": "^16.3.1",
+        "nodemailer": "^6.9.7"
+    }
+}
