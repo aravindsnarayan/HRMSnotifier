@@ -1,6 +1,7 @@
 /**
  * Browser Auth Module
- * Extracts authentication tokens from a saved Puppeteer browser session.
+ * Extracts authentication tokens from a portable session.json file or browser session.
+ * Supports cross-platform session sharing (login on Windows, use on Linux server).
  */
 import puppeteer from 'puppeteer';
 import path from 'path';
@@ -9,6 +10,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USER_DATA_DIR = path.join(__dirname, '..', '.browser-session');
+const SESSION_FILE = path.join(__dirname, '..', 'session.json');
 const HRMS_URL = 'https://hrms.pitsolutions.com/';
 
 /**
@@ -38,12 +40,63 @@ function getSystemChromiumPath() {
 }
 
 /**
- * Checks if a browser session exists
+ * Checks if a session exists (either portable file or browser session)
  * @returns {boolean}
  */
 export function hasSession() {
+    // First check for portable session file (cross-platform)
+    if (fs.existsSync(SESSION_FILE)) {
+        return true;
+    }
+    // Fall back to browser session directory
     return fs.existsSync(USER_DATA_DIR) &&
         fs.existsSync(path.join(USER_DATA_DIR, 'Default'));
+}
+
+/**
+ * Extracts tokens from portable session.json file
+ * @returns {{ accessToken: string, xsrfToken: string, mappingId: string } | null}
+ */
+function extractTokensFromFile() {
+    if (!fs.existsSync(SESSION_FILE)) {
+        return null;
+    }
+
+    try {
+        const sessionData = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
+        const cookies = sessionData.cookies;
+
+        const hrAtk = cookies.find(c => c.name === 'hr_atk');
+        const xsrf = cookies.find(c => c.name === 'XSRF-TOKEN');
+        const hrMid = cookies.find(c => c.name === 'hr_mid');
+
+        if (!hrAtk || !xsrf) {
+            console.error('❌ Session file missing required cookies.');
+            return null;
+        }
+
+        // Check if token is expired
+        try {
+            const payload = JSON.parse(Buffer.from(hrAtk.value.split('.')[1], 'base64').toString());
+            const expires = new Date(payload.exp * 1000);
+            if (expires < new Date()) {
+                console.error('❌ Session expired. Re-export from local machine.');
+                return null;
+            }
+        } catch (e) {
+            // Ignore decode errors
+        }
+
+        console.log('✅ Tokens loaded from session.json');
+        return {
+            accessToken: hrAtk.value,
+            xsrfToken: xsrf.value,
+            mappingId: hrMid?.value || 'P4D9T6HA',
+        };
+    } catch (error) {
+        console.error('❌ Failed to read session.json:', error.message);
+        return null;
+    }
 }
 
 /**
@@ -51,8 +104,15 @@ export function hasSession() {
  * @returns {Promise<{accessToken: string, xsrfToken: string, mappingId: string} | null>}
  */
 export async function extractTokensFromBrowser() {
-    if (!hasSession()) {
-        console.error('❌ No browser session found. Run "npm run login" first.');
+    // First try portable session file (preferred for cross-platform)
+    const fileTokens = extractTokensFromFile();
+    if (fileTokens) {
+        return fileTokens;
+    }
+
+    // Fall back to browser session
+    if (!fs.existsSync(USER_DATA_DIR) || !fs.existsSync(path.join(USER_DATA_DIR, 'Default'))) {
+        console.error('❌ No session found. Run "npm run login" first.');
         return null;
     }
 
@@ -61,9 +121,9 @@ export async function extractTokensFromBrowser() {
     const executablePath = getSystemChromiumPath();
 
     const browser = await puppeteer.launch({
-        headless: 'new', // Headless mode for cron
+        headless: 'new',
         userDataDir: USER_DATA_DIR,
-        executablePath, // Uses system Chromium on ARM, bundled on x86
+        executablePath,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -74,20 +134,13 @@ export async function extractTokensFromBrowser() {
 
     try {
         const page = await browser.newPage();
-
-        // Navigate to HRMS to trigger token refresh
         await page.goto(HRMS_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-
-        // Wait for page to fully load
         await page.waitForFunction(
             () => document.readyState === 'complete',
             { timeout: 30000 }
         );
-
-        // Small delay to ensure tokens are refreshed
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Extract cookies
         const cookies = await page.cookies();
         const hrAtk = cookies.find(c => c.name === 'hr_atk');
         const xsrf = cookies.find(c => c.name === 'XSRF-TOKEN');
@@ -99,35 +152,7 @@ export async function extractTokensFromBrowser() {
             return null;
         }
 
-        // Check if token is expired
-        try {
-            const payload = JSON.parse(Buffer.from(hrAtk.value.split('.')[1], 'base64').toString());
-            const expires = new Date(payload.exp * 1000);
-            if (expires < new Date()) {
-                console.log('⚠️  Token expired, session should auto-refresh...');
-                // Wait a bit more for refresh
-                await new Promise(resolve => setTimeout(resolve, 3000));
-
-                // Re-extract cookies after refresh
-                const newCookies = await page.cookies();
-                const newHrAtk = newCookies.find(c => c.name === 'hr_atk');
-                const newXsrf = newCookies.find(c => c.name === 'XSRF-TOKEN');
-
-                if (newHrAtk && newXsrf) {
-                    await browser.close();
-                    return {
-                        accessToken: newHrAtk.value,
-                        xsrfToken: newXsrf.value,
-                        mappingId: hrMid?.value || 'P4D9T6HA',
-                    };
-                }
-            }
-        } catch (e) {
-            // Ignore decode errors
-        }
-
         await browser.close();
-
         console.log('✅ Tokens extracted from browser session');
 
         return {

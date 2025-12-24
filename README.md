@@ -24,6 +24,7 @@ npm start
 | Command | Description |
 |---------|-------------|
 | `npm run login` | Opens browser for Microsoft SSO login (one-time setup) |
+| `npm run export` | Export session to portable `session.json` for server use |
 | `npm start` | Check attendance and send email if absences found |
 | `npm test` | Check attendance without sending email |
 | `npm run test-email` | Test email configuration |
@@ -53,34 +54,61 @@ The notifier sends email alerts for:
 
 ## Server Deployment (Cron)
 
-1. Clone to server, run `npm install`, configure `.env`
-2. SSH with X-forwarding: `ssh -X user@server`
-3. Run `npm run login` - complete Microsoft 2FA once
-4. Add cron for daily check during salary review (23rd-27th):
+Since servers don't have a display for interactive login, use the portable session export:
+
+### Step 1: Login & Export (on your local machine)
 
 ```bash
+# Login with Microsoft SSO + 2FA
+npm run login
+
+# Export session to portable file
+npm run export
+# Creates: session.json
+```
+
+### Step 2: Copy to Server
+
+```powershell
+# Windows PowerShell
+scp -i "~\.ssh\your-key.pem" session.json user@server:/path/to/HRMSnotifier/
+```
+
+```bash
+# Mac/Linux
+scp session.json user@server:/path/to/HRMSnotifier/
+```
+
+### Step 3: Set Up Cron on Server
+
+```bash
+# On the server (no browser needed!)
 0 9 23-27 * * cd /path/to/HRMSnotifier && npm start
 ```
 
-Session persists like your browser (weeks/months). You'll receive an email alert if the session expires or any error occurs.
+The `session.json` file is platform-independent and works on any server (x86, ARM, any OS).
+
+### Session Refresh
+
+When session expires (you'll get an email), repeat Steps 1-2:
+1. `npm run export` on your local machine
+2. `scp session.json` to server
 
 ### ARM Servers (Oracle ARM, Raspberry Pi, etc.)
 
-On ARM-based Linux servers, install system Chromium first:
+**No special setup needed!** With `session.json`, the server doesn't need to run a browser for normal operation.
 
+For local development on ARM, install system Chromium:
 ```bash
-sudo apt update && sudo apt install -y chromium-browser
+sudo snap install chromium
 ```
-
-The app automatically detects ARM architecture and uses system Chromium instead of Puppeteer's bundled Chrome.
 
 ## Troubleshooting
 
 | Error | Email Sent? | Solution |
 |-------|-------------|----------|
-| No browser session | ✅ Yes | Run `npm run login` |
-| Session expired | ✅ Yes | Run `npm run login` |
-| 401/403 Auth error | ✅ Yes | Run `npm run login` |
+| No session found | ✅ Yes | Export session locally: `npm run export`, copy to server |
+| Session expired | ✅ Yes | Re-export: `npm run export`, copy to server |
+| 401/403 Auth error | ✅ Yes | Re-login locally, then export and copy |
 | Network error | ✅ Yes | Check internet connection |
 | SMTP failure | ❌ No | Check `.env` email settings |
-| ARM Chrome error | ❌ No | Install Chromium: `sudo apt install chromium-browser` |
