@@ -35,21 +35,21 @@ export async function sendAbsenceAlert(absentDays) {
     .join('');
 
   const mailOptions = {
-    from: `"HRMS Notifier" <${config.email.user}>`,
+    from: `"Peeplynx HR Notifier" <${config.email.user}>`,
     to: config.email.notifyEmail,
-    subject: `⚠️ HRMS Alert: ${absentDays.length} Absent Day(s) Detected`,
+    subject: `⚠️ Peeplynx HR Alert: ${absentDays.length} Absent Day(s) Detected`,
     text: `
-HRMS Attendance Alert
+Peeplynx HR Attendance Alert
 =====================
 
 ${absentDays.length} absent day(s) detected in the past 31 days:
 
 ${absentList}
 
-Please review your attendance in HRMS and take necessary action (e.g., apply for regularization or leave).
+Please review your attendance in Peeplynx HR and take necessary action (e.g., apply for regularization or leave).
 
 ---
-HRMS Portal: https://hrms.pitsolutions.com/
+Peeplynx HR Portal: https://hrms.pitsolutions.com/
     `.trim(),
     html: `
 <!DOCTYPE html>
@@ -77,9 +77,9 @@ HRMS Portal: https://hrms.pitsolutions.com/
       <p>The following absent days were found in the past 31 days:</p>
       <ul>${htmlList}</ul>
       <p>Please review your attendance and take necessary action:</p>
-      <p><a href="https://hrms.pitsolutions.com/" class="btn">Open HRMS Portal</a></p>
+      <p><a href="https://hrms.pitsolutions.com/" class="btn">Open Peeplynx HR</a></p>
       <div class="footer">
-        <p>This is an automated alert from HRMS Notifier.</p>
+        <p>This is an automated alert from Peeplynx HR Notifier.</p>
       </div>
     </div>
   </div>
@@ -100,10 +100,10 @@ export async function sendTestEmail() {
   const transporter = createTransporter();
 
   const mailOptions = {
-    from: `"HRMS Notifier" <${config.email.user}>`,
+    from: `"Peeplynx HR Notifier" <${config.email.user}>`,
     to: config.email.notifyEmail,
-    subject: '✅ HRMS Notifier - Test Email',
-    text: 'This is a test email from HRMS Notifier. Your email configuration is working correctly!',
+    subject: '✅ Peeplynx HR Notifier - Test Email',
+    text: 'This is a test email from Peeplynx HR Notifier. Your email configuration is working correctly!',
     html: `
 <!DOCTYPE html>
 <html>
@@ -118,7 +118,7 @@ export async function sendTestEmail() {
   <div class="container">
     <div class="success">✅</div>
     <h2>Email Configuration Verified!</h2>
-    <p>Your HRMS Notifier email configuration is working correctly.</p>
+    <p>Your Peeplynx HR Notifier email configuration is working correctly.</p>
   </div>
 </body>
 </html>

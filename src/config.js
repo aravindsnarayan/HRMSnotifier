@@ -4,9 +4,9 @@ export const config = {
     hrms: {
         baseUrl: 'https://hrms.pitsolutions.com',
         apiPath: '/hrmsapi/api/v1',
-        accessToken: process.env.HRMS_ACCESS_TOKEN,
-        xsrfToken: process.env.HRMS_XSRF_TOKEN,
-        mappingId: process.env.HRMS_MAPPING_ID || 'P4D9T6HA',
+        accessToken: null,
+        xsrfToken: null,
+        mappingId: 'P4D9T6HA',
     },
     email: {
         host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -19,18 +19,22 @@ export const config = {
 };
 
 /**
- * Validates that all required configuration is present
+ * Updates the HRMS tokens (from browser session)
+ * @param {{ accessToken: string, xsrfToken: string, mappingId: string }} tokens
+ */
+export function setTokens(tokens) {
+    config.hrms.accessToken = tokens.accessToken;
+    config.hrms.xsrfToken = tokens.xsrfToken;
+    config.hrms.mappingId = tokens.mappingId;
+}
+
+/**
+ * Validates that email configuration is present
  * @returns {{ valid: boolean, errors: string[] }}
  */
 export function validateConfig() {
     const errors = [];
 
-    if (!config.hrms.accessToken) {
-        errors.push('HRMS_ACCESS_TOKEN is required - extract hr_atk cookie from browser');
-    }
-    if (!config.hrms.xsrfToken) {
-        errors.push('HRMS_XSRF_TOKEN is required - extract XSRF-TOKEN cookie from browser');
-    }
     if (!config.email.user) {
         errors.push('SMTP_USER is required for sending email notifications');
     }

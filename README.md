@@ -1,6 +1,6 @@
-# HRMS Attendance Notifier
+# Peeplynx HR Attendance Notifier
 
-Monitors your HRMS attendance for the current salary period (26th → 25th) and sends email alerts when any "Absent" status is detected.
+Monitors your Peeplynx HR attendance for the current salary period (26th → 25th) and sends email alerts when any "Absent" status is detected.
 
 ## Quick Start
 
@@ -8,75 +8,54 @@ Monitors your HRMS attendance for the current salary period (26th → 25th) and 
 # 1. Install dependencies
 npm install
 
-# 2. Copy environment template
+# 2. Configure email settings
 copy .env.example .env
+# Edit .env with your SMTP settings
 
-# 3. Fill in your tokens and email config (see below)
+# 3. Login to Peeplynx HR (opens browser for Microsoft SSO + 2FA)
+npm run login
 
 # 4. Run the notifier
 npm start
 ```
 
-## Configuration
+## Commands
 
-### 1. Extract HRMS Tokens from Browser
+| Command | Description |
+|---------|-------------|
+| `npm run login` | Opens browser for Microsoft SSO login (one-time setup) |
+| `npm start` | Check attendance and send email if absences found |
+| `npm test` | Check attendance without sending email |
+| `npm run test-email` | Test email configuration |
 
-1. Go to https://hrms.pitsolutions.com/ and log in
-2. Open DevTools (`F12`) → **Application** tab → **Cookies**
-3. Copy these cookie values to your `.env` file:
+## Email Configuration (.env)
 
-| Cookie | → .env Variable |
-|--------|-----------------|
-| `hr_atk` | `HRMS_ACCESS_TOKEN` |
-| `XSRF-TOKEN` | `HRMS_XSRF_TOKEN` |
-
-**Note:** Tokens expire periodically. Refresh them when you get authentication errors.
-
-### 2. Configure Custom SMTP
-
-Set your company's SMTP server details in the `.env` file:
-```
-SMTP_HOST=your-smtp-server.com
+```env
+SMTP_HOST=smtp.displayme.net
 SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=your-email@company.com
-SMTP_PASS=your-smtp-password
+SMTP_PASS=your-password
 NOTIFY_EMAIL=your-email@company.com
 ```
 
-## Usage
+## Server Deployment (Cron)
+
+1. Clone to server, run `npm install`, configure `.env`
+2. SSH with X-forwarding: `ssh -X user@server`
+3. Run `npm run login` - complete Microsoft 2FA once
+4. Add cron for daily check during salary review (23rd-27th):
 
 ```bash
-# Full check with email notification
-npm start
-
-# Test mode (check attendance, no email)
-npm run test
-
-# Test email configuration
-npm run test-email
+0 9 23-27 * * cd /path/to/HRMSnotifier && npm start
 ```
 
-## Scheduling (Optional)
-
-### Windows Task Scheduler
-1. Open Task Scheduler
-2. Create Basic Task → Set trigger (e.g., daily at 9 AM)
-3. Action: Start a program
-   - Program: `node`
-   - Arguments: `src/index.js`
-   - Start in: `C:\Users\aravind.sn\Downloads\HRMSnotifier`
-
-### Using cron (Linux/WSL)
-```bash
-# Run daily at 9 AM
-0 9 * * * cd /path/to/HRMSnotifier && node src/index.js
-```
+Session persists like your browser (weeks/months). Re-run `npm run login` only if session expires.
 
 ## Troubleshooting
 
 | Error | Solution |
 |-------|----------|
-| `401 Unauthorized` | Tokens expired. Re-extract from browser cookies |
-| `SMTP authentication failed` | Check SMTP credentials are correct |
-| `Configuration errors` | Ensure all `.env` variables are filled |
+| `No browser session found` | Run `npm run login` |
+| `401 Unauthorized` | Session expired, run `npm run login` |
+| `SMTP authentication failed` | Check email settings in `.env` |

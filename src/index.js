@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-import { config, validateConfig } from './config.js';
+import { config, validateConfig, setTokens } from './config.js';
 import { checkAttendance } from './attendance.js';
 import { sendAbsenceAlert, sendTestEmail } from './notifier.js';
-
-
+import { extractTokensFromBrowser, hasSession } from './browser-auth.js';
 
 /**
  * Main application entry point
@@ -11,7 +10,7 @@ import { sendAbsenceAlert, sendTestEmail } from './notifier.js';
 async function main() {
     console.log('');
     console.log('╔═══════════════════════════════════════════╗');
-    console.log('║        HRMS Attendance Notifier           ║');
+    console.log('║     Peeplynx HR Attendance Notifier       ║');
     console.log('╚═══════════════════════════════════════════╝');
     console.log('');
 
@@ -20,14 +19,32 @@ async function main() {
     const isTestMode = args.includes('--test');
     const isEmailTest = args.includes('--test-email');
 
-    // Validate configuration
+    // Check for browser session
+    if (!hasSession()) {
+        console.error('❌ No browser session found.');
+        console.log('');
+        console.log('💡 Run "npm run login" first to authenticate with Microsoft SSO.');
+        process.exit(1);
+    }
+
+    // Extract tokens from browser session
+    const tokens = await extractTokensFromBrowser();
+    if (!tokens) {
+        console.error('❌ Failed to extract tokens from browser session.');
+        console.log('');
+        console.log('💡 Run "npm run login" to re-authenticate.');
+        process.exit(1);
+    }
+
+    setTokens(tokens);
+
+    // Validate email configuration
     const validation = validateConfig();
     if (!validation.valid) {
         console.error('❌ Configuration errors:');
         validation.errors.forEach(err => console.error(`   • ${err}`));
         console.log('');
-        console.log('💡 Copy .env.example to .env and fill in your values.');
-        console.log('   See README.md for instructions on extracting HRMS tokens.');
+        console.log('💡 Ensure .env has email configuration (SMTP_*, NOTIFY_EMAIL).');
         process.exit(1);
     }
 
@@ -91,8 +108,8 @@ async function main() {
 
         if (error.message.includes('401') || error.message.includes('403')) {
             console.log('');
-            console.log('💡 Authentication failed. Your tokens may have expired.');
-            console.log('   Please refresh the tokens from your browser cookies.');
+            console.log('💡 Authentication failed. Session may have expired.');
+            console.log('   Run "npm run login" to re-authenticate.');
         }
 
         process.exit(1);
