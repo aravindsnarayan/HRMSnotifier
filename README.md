@@ -1,6 +1,6 @@
 # HRMS Attendance Notifier
 
-Monitors your HRMS attendance and sends email alerts when any "Absent" status is detected in the past 31 days.
+Monitors your HRMS attendance for the current salary period (26th → 25th) and sends email alerts when any "Absent" status is detected.
 
 ## Quick Start
 

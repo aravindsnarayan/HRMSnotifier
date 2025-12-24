@@ -3,7 +3,7 @@ import { config, validateConfig } from './config.js';
 import { checkAttendance } from './attendance.js';
 import { sendAbsenceAlert, sendTestEmail } from './notifier.js';
 
-const DAYS_TO_CHECK = 31;
+
 
 /**
  * Main application entry point
@@ -50,17 +50,22 @@ async function main() {
     // Check attendance
     console.log('');
     try {
-        const result = await checkAttendance(DAYS_TO_CHECK);
+        const result = await checkAttendance();
 
         console.log('');
         console.log('📊 Attendance Summary:');
         result.summary.forEach(s => {
-            console.log(`   ${s.month}/${s.year}: Present=${s.present}, Absent=${s.absent}, Leave=${s.leave}`);
+            console.log(`   📅 ${s.month}/${s.year} (Payable: ${s.payableDays} days):`);
+            console.log(`      🏢 In-office: ${s.inOffice} | 🚗 On-duty: ${s.onDuty} | ❌ Absent: ${s.absent}`);
+            console.log(`      🏖️  Leave: ${s.leave} | 🎄 Holiday: ${s.holiday} | 🛋️  Weekly Off: ${s.weeklyOff}`);
+            if (s.regularization > 0) {
+                console.log(`      📝 Regularization: ${s.regularization}`);
+            }
         });
 
         if (result.absentDays.length === 0) {
             console.log('');
-            console.log('✅ No absences detected in the past 31 days!');
+            console.log('✅ No absences detected in this salary period!');
             console.log('   Your attendance looks good. 🎉');
         } else {
             console.log('');

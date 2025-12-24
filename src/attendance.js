@@ -81,14 +81,13 @@ function extractAbsentDays(data, startDate, endDate) {
 }
 
 /**
- * Checks attendance for the past N days and returns absent days
- * @param {number} days - Number of days to check (default: 31)
+ * Checks attendance for the current salary period and returns absent days
  * @returns {Promise<{absentDays: Array<{date: string, status: string}>, totalAbsent: number, summary: Object}>}
  */
-export async function checkAttendance(days = 31) {
-    const { months, startDate, endDate } = getDateRange(days);
+export async function checkAttendance() {
+    const { months, startDate, endDate } = getDateRange();
 
-    console.log(`📅 Checking attendance from ${formatDate(startDate)} to ${formatDate(endDate)}`);
+    console.log(`📅 Checking salary period: ${formatDate(startDate)} to ${formatDate(endDate)}`);
 
     const allAbsentDays = [];
     let totalAbsentCount = 0;
@@ -109,11 +108,14 @@ export async function checkAttendance(days = 31) {
             monthlySummaries.push({
                 month,
                 year,
-                present: countDetails?.PresentCount || 0,
+                inOffice: countDetails?.PresentCount || 0,
+                onDuty: countDetails?.OnDutyCount || 0,
                 absent: countDetails?.AbsentCount || 0,
                 leave: countDetails?.LeaveCount || 0,
                 holiday: countDetails?.HolidayCount || 0,
                 weeklyOff: countDetails?.WeeklyOffCount || 0,
+                regularization: countDetails?.RegularizationCount || 0,
+                payableDays: countDetails?.PayableDaysCount || 0,
             });
 
             // Extract specific absent days within our range
