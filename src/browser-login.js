@@ -1,17 +1,48 @@
 #!/usr/bin/env node
 /**
  * Browser Login Module
- * Opens a browser for interactive login to HRMS with Microsoft SSO.
+ * Opens a browser for interactive login to Peeplynx HR with Microsoft SSO.
  * Saves the session (cookies, localStorage) to a persistent profile.
  */
 import puppeteer from 'puppeteer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USER_DATA_DIR = path.join(__dirname, '..', '.browser-session');
 const HRMS_URL = 'https://hrms.pitsolutions.com/';
+
+/**
+ * Detects if running on ARM architecture and returns system Chromium path if available
+ * @returns {string | undefined}
+ */
+function getSystemChromiumPath() {
+    const arch = process.arch;
+    const platform = process.platform;
+
+    // On ARM Linux, Puppeteer's bundled Chrome doesn't work
+    if (platform === 'linux' && (arch === 'arm64' || arch === 'arm')) {
+        const possiblePaths = [
+            '/snap/bin/chromium',           // Snap version (Ubuntu)
+            '/usr/bin/chromium',             // Direct binary
+            '/usr/bin/chromium-browser',     // May be wrapper on Ubuntu
+        ];
+
+        for (const chromePath of possiblePaths) {
+            if (fs.existsSync(chromePath)) {
+                console.log(`🔧 ARM detected, using system Chromium: ${chromePath}`);
+                return chromePath;
+            }
+        }
+
+        console.error('⚠️  ARM architecture detected but no system Chromium found.');
+        console.error('   Install Chromium: sudo snap install chromium');
+    }
+
+    return undefined; // Use Puppeteer's bundled Chrome
+}
 
 /**
  * Opens browser for interactive login
@@ -36,13 +67,17 @@ async function login() {
     console.log('   The browser will close automatically once logged in.');
     console.log('');
 
+    const executablePath = getSystemChromiumPath();
+
     const browser = await puppeteer.launch({
         headless: false, // Visible browser for login
         userDataDir: USER_DATA_DIR,
+        executablePath, // Uses system Chromium on ARM, bundled on x86
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-blink-features=AutomationControlled',
+            '--disable-gpu', // Helps on headless Linux servers
         ],
         defaultViewport: null, // Use full window size
     });
@@ -92,7 +127,7 @@ async function login() {
         }
 
         console.log('');
-        console.log('🎉 You can now use: npm run check');
+        console.log('🎉 You can now use: npm start');
         console.log('   This will use the saved browser session.');
 
     } catch (error) {

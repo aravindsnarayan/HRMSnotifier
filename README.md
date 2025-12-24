@@ -64,6 +64,16 @@ The notifier sends email alerts for:
 
 Session persists like your browser (weeks/months). You'll receive an email alert if the session expires or any error occurs.
 
+### ARM Servers (Oracle ARM, Raspberry Pi, etc.)
+
+On ARM-based Linux servers, install system Chromium first:
+
+```bash
+sudo apt update && sudo apt install -y chromium-browser
+```
+
+The app automatically detects ARM architecture and uses system Chromium instead of Puppeteer's bundled Chrome.
+
 ## Troubleshooting
 
 | Error | Email Sent? | Solution |
@@ -73,3 +83,4 @@ Session persists like your browser (weeks/months). You'll receive an email alert
 | 401/403 Auth error | ✅ Yes | Run `npm run login` |
 | Network error | ✅ Yes | Check internet connection |
 | SMTP failure | ❌ No | Check `.env` email settings |
+| ARM Chrome error | ❌ No | Install Chromium: `sudo apt install chromium-browser` |

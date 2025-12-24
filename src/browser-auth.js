@@ -12,6 +12,32 @@ const USER_DATA_DIR = path.join(__dirname, '..', '.browser-session');
 const HRMS_URL = 'https://hrms.pitsolutions.com/';
 
 /**
+ * Detects if running on ARM architecture and returns system Chromium path if available
+ * @returns {string | undefined}
+ */
+function getSystemChromiumPath() {
+    const arch = process.arch;
+    const platform = process.platform;
+
+    // On ARM Linux, Puppeteer's bundled Chrome doesn't work
+    if (platform === 'linux' && (arch === 'arm64' || arch === 'arm')) {
+        const possiblePaths = [
+            '/snap/bin/chromium',           // Snap version (Ubuntu)
+            '/usr/bin/chromium',             // Direct binary
+            '/usr/bin/chromium-browser',     // May be wrapper on Ubuntu
+        ];
+
+        for (const chromePath of possiblePaths) {
+            if (fs.existsSync(chromePath)) {
+                return chromePath;
+            }
+        }
+    }
+
+    return undefined; // Use Puppeteer's bundled Chrome
+}
+
+/**
  * Checks if a browser session exists
  * @returns {boolean}
  */
@@ -32,13 +58,17 @@ export async function extractTokensFromBrowser() {
 
     console.log('🌐 Extracting tokens from browser session...');
 
+    const executablePath = getSystemChromiumPath();
+
     const browser = await puppeteer.launch({
         headless: 'new', // Headless mode for cron
         userDataDir: USER_DATA_DIR,
+        executablePath, // Uses system Chromium on ARM, bundled on x86
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-blink-features=AutomationControlled',
+            '--disable-gpu',
         ],
     });
 
