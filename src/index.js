@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { config, validateConfig, setTokens } from './config.js';
 import { checkAttendance } from './attendance.js';
-import { sendAbsenceAlert, sendTestEmail } from './notifier.js';
+import { sendAbsenceAlert, sendTestEmail, sendSessionExpiredAlert, sendErrorAlert } from './notifier.js';
 import { extractTokensFromBrowser, hasSession } from './browser-auth.js';
 
 /**
@@ -24,6 +24,14 @@ async function main() {
         console.error('❌ No browser session found.');
         console.log('');
         console.log('💡 Run "npm run login" first to authenticate with Microsoft SSO.');
+
+        // Send email notification about missing session
+        try {
+            await sendSessionExpiredAlert();
+        } catch (emailError) {
+            console.error('⚠️  Could not send session alert email:', emailError.message);
+        }
+
         process.exit(1);
     }
 
@@ -33,6 +41,14 @@ async function main() {
         console.error('❌ Failed to extract tokens from browser session.');
         console.log('');
         console.log('💡 Run "npm run login" to re-authenticate.');
+
+        // Send email notification about session expiry
+        try {
+            await sendSessionExpiredAlert();
+        } catch (emailError) {
+            console.error('⚠️  Could not send session expiry email:', emailError.message);
+        }
+
         process.exit(1);
     }
 
@@ -106,10 +122,24 @@ async function main() {
         console.error('');
         console.error('❌ Error checking attendance:', error.message);
 
+        // Determine error type and send appropriate alert
+        let errorType = 'unknown';
         if (error.message.includes('401') || error.message.includes('403')) {
+            errorType = 'auth';
             console.log('');
             console.log('💡 Authentication failed. Session may have expired.');
             console.log('   Run "npm run login" to re-authenticate.');
+        } else if (error.message.includes('ENOTFOUND') || error.message.includes('ETIMEDOUT') || error.message.includes('network')) {
+            errorType = 'network';
+            console.log('');
+            console.log('💡 Network error. Check your internet connection.');
+        }
+
+        // Send error notification email
+        try {
+            await sendErrorAlert(error.message, errorType);
+        } catch (emailError) {
+            console.error('⚠️  Could not send error alert email:', emailError.message);
         }
 
         process.exit(1);

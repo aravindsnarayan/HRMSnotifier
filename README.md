@@ -39,6 +39,18 @@ SMTP_PASS=your-password
 NOTIFY_EMAIL=your-email@company.com
 ```
 
+## Email Notifications
+
+The notifier sends email alerts for:
+
+| Scenario | Email Subject |
+|----------|---------------|
+| Absences detected | ⚠️ Peeplynx HR Alert: X Absent Day(s) Detected |
+| Session expired | 🔐 Peeplynx HR Session Expired - Re-login Required |
+| Auth error (401/403) | ⚠️ Peeplynx HR Notifier - 🔐 Authentication Error |
+| Network error | ⚠️ Peeplynx HR Notifier - 🌐 Network Error |
+| Other errors | ⚠️ Peeplynx HR Notifier - ❌ Error |
+
 ## Server Deployment (Cron)
 
 1. Clone to server, run `npm install`, configure `.env`
@@ -50,12 +62,14 @@ NOTIFY_EMAIL=your-email@company.com
 0 9 23-27 * * cd /path/to/HRMSnotifier && npm start
 ```
 
-Session persists like your browser (weeks/months). Re-run `npm run login` only if session expires.
+Session persists like your browser (weeks/months). You'll receive an email alert if the session expires or any error occurs.
 
 ## Troubleshooting
 
-| Error | Solution |
-|-------|----------|
-| `No browser session found` | Run `npm run login` |
-| `401 Unauthorized` | Session expired, run `npm run login` |
-| `SMTP authentication failed` | Check email settings in `.env` |
+| Error | Email Sent? | Solution |
+|-------|-------------|----------|
+| No browser session | ✅ Yes | Run `npm run login` |
+| Session expired | ✅ Yes | Run `npm run login` |
+| 401/403 Auth error | ✅ Yes | Run `npm run login` |
+| Network error | ✅ Yes | Check internet connection |
+| SMTP failure | ❌ No | Check `.env` email settings |
