@@ -17,13 +17,12 @@ npm start                 # Check attendance
 |---------|-------------|
 | `npm run login` | Browser login with Microsoft SSO + 2FA |
 | `npm run export` | Export session to portable `session.json` |
-| `npm run import` | Import `session.json` into browser session (server) |
 | `npm start` | Check attendance and email if absences found |
 | `npm test` | Check without sending email |
 
 ## Server Deployment
 
-### One-Time Setup
+### Setup
 
 **Step 1: Login & Export (on your local machine)**
 ```bash
@@ -31,13 +30,9 @@ npm run login     # Complete 2FA
 npm run export    # Creates session.json
 ```
 
-**Step 2: Copy & Import (on server)**
+**Step 2: Copy to Server**
 ```bash
-# Copy to server
 scp session.json user@server:/path/to/HRMSnotifier/
-
-# On server: import into browser session
-npm run import    # Creates .browser-session with auto-refresh
 ```
 
 **Step 3: Set Up Cron**
@@ -47,28 +42,21 @@ npm run import    # Creates .browser-session with auto-refresh
 
 ### How It Works
 
-```
-Local Machine                    Server
-─────────────                    ──────
-npm run login ─┐
-               │ session.json
-npm run export ─┘     ──────►    npm run import
-                                      │
-                            .browser-session (with auto-refresh)
-                                      │
-                                 npm start ✓
-```
+Each run:
+1. Loads cookies from `session.json`
+2. Launches headless browser with those cookies
+3. Browser auto-refreshes tokens
+4. Saves refreshed cookies back to `session.json`
 
-The `import` command creates a real browser session on the server that can auto-refresh tokens - just like your local browser!
+This means tokens stay fresh as long as you run within the session window!
 
 ### Session Refresh
 
 When you get a "session expired" email:
-1. On local: `npm run export`
-2. Copy `session.json` to server
-3. On server: `npm run import`
+1. On local: `npm run login` → `npm run export`
+2. Copy new `session.json` to server
 
-### ARM Servers
+### ARM Servers (Oracle ARM, Raspberry Pi)
 
 Install Chromium first:
 ```bash
@@ -93,3 +81,10 @@ SMTP_USER=your-email@company.com
 SMTP_PASS=your-password
 NOTIFY_EMAIL=your-email@company.com
 ```
+
+## Salary Period Logic
+
+- **Days 1-27:** Shows previous period (for review/regularization)
+- **Days 28-31:** Shows current period
+
+This ensures you review the right period before it's finalized.

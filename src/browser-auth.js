@@ -1,7 +1,7 @@
 /**
  * Browser Auth Module
- * Extracts authentication tokens from a browser session.
- * Uses the browser to auto-refresh tokens (supports both local and imported sessions).
+ * Extracts authentication tokens using browser with session from session.json.
+ * Injects cookies on each run and lets the browser refresh tokens automatically.
  */
 import puppeteer from 'puppeteer';
 import path from 'path';
@@ -9,7 +9,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const USER_DATA_DIR = path.join(__dirname, '..', '.browser-session');
+const SESSION_FILE = path.join(__dirname, '..', 'session.json');
 const HRMS_URL = 'https://hrms.pitsolutions.com/';
 
 /**
@@ -37,33 +37,42 @@ function getSystemChromiumPath() {
 }
 
 /**
- * Checks if a browser session exists
+ * Checks if a session file exists
  */
 export function hasSession() {
-    return fs.existsSync(USER_DATA_DIR) &&
-        fs.existsSync(path.join(USER_DATA_DIR, 'Default'));
+    return fs.existsSync(SESSION_FILE);
 }
 
 /**
- * Extracts tokens from browser session (with auto-refresh)
+ * Extracts tokens by launching browser with injected cookies from session.json
+ * The browser refreshes the tokens automatically.
  */
 export async function extractTokensFromBrowser() {
     if (!hasSession()) {
-        console.error('❌ No browser session found.');
-        console.log('   Run "npm run login" locally, then:');
-        console.log('   1. npm run export (on local)');
-        console.log('   2. scp session.json to server');
-        console.log('   3. npm run import (on server)');
+        console.error('❌ No session.json found.');
+        console.log('');
+        console.log('💡 On your local machine:');
+        console.log('   1. npm run login');
+        console.log('   2. npm run export');
+        console.log('   3. scp session.json to this server');
         return null;
     }
 
-    console.log('🌐 Extracting tokens from browser session...');
+    // Read session file
+    let sessionData;
+    try {
+        sessionData = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
+    } catch (error) {
+        console.error('❌ Failed to read session.json:', error.message);
+        return null;
+    }
+
+    console.log('🌐 Launching browser with session...');
 
     const executablePath = getSystemChromiumPath();
 
     const browser = await puppeteer.launch({
         headless: 'new',
-        userDataDir: USER_DATA_DIR,
         executablePath,
         args: [
             '--no-sandbox',
@@ -76,19 +85,37 @@ export async function extractTokensFromBrowser() {
     try {
         const page = await browser.newPage();
 
-        // Navigate to HRMS to trigger token refresh
+        // Set cookies from session.json BEFORE navigating
+        console.log('🍪 Injecting session cookies...');
+        for (const cookie of sessionData.cookies) {
+            try {
+                await page.setCookie({
+                    name: cookie.name,
+                    value: cookie.value,
+                    domain: cookie.domain.startsWith('.') ? cookie.domain : `.${cookie.domain}`,
+                    path: cookie.path || '/',
+                    httpOnly: cookie.httpOnly || false,
+                    secure: cookie.secure || false,
+                    sameSite: cookie.sameSite || 'Lax',
+                });
+            } catch (e) {
+                // Some cookies may fail, continue
+            }
+        }
+
+        // Navigate to HRMS - the browser will use injected cookies
         await page.goto(HRMS_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // Wait for page to fully load
+        // Wait for page to fully load and tokens to refresh
         await page.waitForFunction(
             () => document.readyState === 'complete',
             { timeout: 30000 }
         );
 
-        // Small delay to ensure tokens are refreshed
+        // Small delay for token refresh
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Extract cookies
+        // Extract refreshed cookies
         const cookies = await page.cookies();
         const hrAtk = cookies.find(c => c.name === 'hr_atk');
         const xsrf = cookies.find(c => c.name === 'XSRF-TOKEN');
@@ -97,11 +124,24 @@ export async function extractTokensFromBrowser() {
         await browser.close();
 
         if (!hrAtk || !xsrf) {
-            console.error('❌ Session expired. Re-import session from local machine.');
+            console.error('❌ Session expired. Re-export from local machine.');
             return null;
         }
 
-        console.log('✅ Tokens extracted (session auto-refreshed)');
+        // Update session.json with refreshed cookies for next run
+        const updatedCookies = cookies.filter(c =>
+            c.domain.includes('pitsolutions.com') || c.domain.includes('hrms')
+        );
+        if (updatedCookies.length > 0) {
+            const updatedSession = {
+                exportedAt: new Date().toISOString(),
+                cookies: updatedCookies,
+            };
+            fs.writeFileSync(SESSION_FILE, JSON.stringify(updatedSession, null, 2));
+            console.log('✅ Tokens refreshed and saved');
+        } else {
+            console.log('✅ Tokens extracted');
+        }
 
         return {
             accessToken: hrAtk.value,
