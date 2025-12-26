@@ -1,7 +1,7 @@
 /**
  * Browser Auth Module
- * Extracts authentication tokens using browser with session from session.json.
- * Injects cookies on each run and lets the browser refresh tokens automatically.
+ * Extracts authentication tokens using session.json with optimized browser usage.
+ * Only launches browser when tokens need refreshing.
  */
 import puppeteer from 'puppeteer';
 import path from 'path';
@@ -44,8 +44,53 @@ export function hasSession() {
 }
 
 /**
- * Extracts tokens by launching browser with injected cookies from session.json
- * The browser refreshes the tokens automatically.
+ * Checks if tokens in session.json are still valid (not expired)
+ * Returns tokens if valid, null if expired or missing
+ */
+function getValidTokensFromFile() {
+    if (!fs.existsSync(SESSION_FILE)) {
+        return null;
+    }
+
+    try {
+        const sessionData = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
+        const cookies = sessionData.cookies;
+
+        const hrAtk = cookies.find(c => c.name === 'hr_atk');
+        const xsrf = cookies.find(c => c.name === 'XSRF-TOKEN');
+        const hrMid = cookies.find(c => c.name === 'hr_mid');
+
+        if (!hrAtk || !xsrf) {
+            return null;
+        }
+
+        // Check if token is expired (with 5 min buffer)
+        try {
+            const payload = JSON.parse(Buffer.from(hrAtk.value.split('.')[1], 'base64').toString());
+            const expires = new Date(payload.exp * 1000);
+            const buffer = 5 * 60 * 1000; // 5 minutes buffer
+
+            if (expires.getTime() - buffer > Date.now()) {
+                // Token still valid - no need to launch browser
+                return {
+                    accessToken: hrAtk.value,
+                    xsrfToken: xsrf.value,
+                    mappingId: hrMid?.value || 'P4D9T6HA',
+                    cookies: sessionData.cookies,
+                };
+            }
+        } catch (e) {
+            // Can't decode token, need to refresh
+        }
+
+        return { needsRefresh: true, cookies: sessionData.cookies };
+    } catch (error) {
+        return null;
+    }
+}
+
+/**
+ * Extracts tokens, using browser only when needed
  */
 export async function extractTokensFromBrowser() {
     if (!hasSession()) {
@@ -58,16 +103,20 @@ export async function extractTokensFromBrowser() {
         return null;
     }
 
-    // Read session file
-    let sessionData;
-    try {
-        sessionData = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
-    } catch (error) {
-        console.error('❌ Failed to read session.json:', error.message);
-        return null;
+    // Check if existing tokens are still valid
+    const cached = getValidTokensFromFile();
+
+    if (cached && !cached.needsRefresh) {
+        console.log('✅ Using cached tokens (still valid)');
+        return {
+            accessToken: cached.accessToken,
+            xsrfToken: cached.xsrfToken,
+            mappingId: cached.mappingId,
+        };
     }
 
-    console.log('🌐 Launching browser with session...');
+    // Tokens expired or need refresh - launch browser
+    console.log('🌐 Refreshing tokens via browser...');
 
     const executablePath = getSystemChromiumPath();
 
@@ -85,35 +134,24 @@ export async function extractTokensFromBrowser() {
     try {
         const page = await browser.newPage();
 
-        // Set cookies from session.json BEFORE navigating
-        console.log('🍪 Injecting session cookies...');
-        for (const cookie of sessionData.cookies) {
-            try {
-                await page.setCookie({
-                    name: cookie.name,
-                    value: cookie.value,
-                    domain: cookie.domain.startsWith('.') ? cookie.domain : `.${cookie.domain}`,
-                    path: cookie.path || '/',
-                    httpOnly: cookie.httpOnly || false,
-                    secure: cookie.secure || false,
-                    sameSite: cookie.sameSite || 'Lax',
-                });
-            } catch (e) {
-                // Some cookies may fail, continue
-            }
-        }
+        // Batch set all cookies at once (faster than one-by-one)
+        const cookiesToSet = cached.cookies.map(cookie => ({
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain.startsWith('.') ? cookie.domain : `.${cookie.domain}`,
+            path: cookie.path || '/',
+            httpOnly: cookie.httpOnly || false,
+            secure: cookie.secure || false,
+            sameSite: cookie.sameSite || 'Lax',
+        }));
 
-        // Navigate to HRMS - the browser will use injected cookies
+        await page.setCookie(...cookiesToSet);
+
+        // Navigate to HRMS - browser will refresh tokens
         await page.goto(HRMS_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // Wait for page to fully load and tokens to refresh
-        await page.waitForFunction(
-            () => document.readyState === 'complete',
-            { timeout: 30000 }
-        );
-
-        // Small delay for token refresh
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Brief wait for token refresh
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Extract refreshed cookies
         const cookies = await page.cookies();
@@ -128,20 +166,16 @@ export async function extractTokensFromBrowser() {
             return null;
         }
 
-        // Update session.json with refreshed cookies for next run
+        // Save refreshed cookies
         const updatedCookies = cookies.filter(c =>
             c.domain.includes('pitsolutions.com') || c.domain.includes('hrms')
         );
-        if (updatedCookies.length > 0) {
-            const updatedSession = {
-                exportedAt: new Date().toISOString(),
-                cookies: updatedCookies,
-            };
-            fs.writeFileSync(SESSION_FILE, JSON.stringify(updatedSession, null, 2));
-            console.log('✅ Tokens refreshed and saved');
-        } else {
-            console.log('✅ Tokens extracted');
-        }
+        fs.writeFileSync(SESSION_FILE, JSON.stringify({
+            exportedAt: new Date().toISOString(),
+            cookies: updatedCookies,
+        }, null, 2));
+
+        console.log('✅ Tokens refreshed and saved');
 
         return {
             accessToken: hrAtk.value,
