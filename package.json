@@ -9,8 +9,7 @@
         "test": "node src/index.js --test",
         "test-email": "node src/index.js --test-email",
         "login": "node src/browser-login.js",
-        "export": "node src/export-session.js",
-        "import": "node src/import-session.js"
+        "export": "node src/export-session.js"
     },
     "keywords": [
         "hrms",
