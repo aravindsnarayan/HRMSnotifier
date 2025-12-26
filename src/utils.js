@@ -1,5 +1,7 @@
 /**
  * Gets the salary period date range (26th of last month to 25th of current month)
+ * Days 1-27: Shows previous period (for review/regularization)
+ * Days 28+: Shows current period
  * @returns {{ months: Array<{month: number, year: number}>, startDate: Date, endDate: Date }}
  */
 export function getDateRange() {
@@ -8,12 +10,12 @@ export function getDateRange() {
 
     let startDate, endDate;
 
-    if (currentDay >= 26) {
-        // We're in the current salary period (26th of this month to 25th of next month)
+    if (currentDay >= 28) {
+        // After 27th: Show current salary period (26th of this month to 25th of next month)
         startDate = new Date(today.getFullYear(), today.getMonth(), 26);
         endDate = new Date(today.getFullYear(), today.getMonth() + 1, 25);
     } else {
-        // We're in the previous salary period (26th of last month to 25th of this month)
+        // Days 1-27: Show previous salary period (for review/regularization)
         startDate = new Date(today.getFullYear(), today.getMonth() - 1, 26);
         endDate = new Date(today.getFullYear(), today.getMonth(), 25);
     }

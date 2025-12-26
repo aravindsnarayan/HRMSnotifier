@@ -2,32 +2,86 @@
 
 Monitors your Peeplynx HR attendance for the current salary period (26th → 25th) and sends email alerts when any "Absent" status is detected.
 
-## Quick Start
+## Quick Start (Local)
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Configure email settings
-copy .env.example .env
-# Edit .env with your SMTP settings
-
-# 3. Login to Peeplynx HR (opens browser for Microsoft SSO + 2FA)
-npm run login
-
-# 4. Run the notifier
-npm start
+copy .env.example .env    # Configure email settings
+npm run login             # Complete Microsoft SSO + 2FA
+npm start                 # Check attendance
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `npm run login` | Opens browser for Microsoft SSO login (one-time setup) |
-| `npm run export` | Export session to portable `session.json` for server use |
-| `npm start` | Check attendance and send email if absences found |
-| `npm test` | Check attendance without sending email |
-| `npm run test-email` | Test email configuration |
+| `npm run login` | Browser login with Microsoft SSO + 2FA |
+| `npm run export` | Export session to portable `session.json` |
+| `npm run import` | Import `session.json` into browser session (server) |
+| `npm start` | Check attendance and email if absences found |
+| `npm test` | Check without sending email |
+
+## Server Deployment
+
+### One-Time Setup
+
+**Step 1: Login & Export (on your local machine)**
+```bash
+npm run login     # Complete 2FA
+npm run export    # Creates session.json
+```
+
+**Step 2: Copy & Import (on server)**
+```bash
+# Copy to server
+scp session.json user@server:/path/to/HRMSnotifier/
+
+# On server: import into browser session
+npm run import    # Creates .browser-session with auto-refresh
+```
+
+**Step 3: Set Up Cron**
+```bash
+0 9 23-27 * * cd /path/to/HRMSnotifier && npm start
+```
+
+### How It Works
+
+```
+Local Machine                    Server
+─────────────                    ──────
+npm run login ─┐
+               │ session.json
+npm run export ─┘     ──────►    npm run import
+                                      │
+                            .browser-session (with auto-refresh)
+                                      │
+                                 npm start ✓
+```
+
+The `import` command creates a real browser session on the server that can auto-refresh tokens - just like your local browser!
+
+### Session Refresh
+
+When you get a "session expired" email:
+1. On local: `npm run export`
+2. Copy `session.json` to server
+3. On server: `npm run import`
+
+### ARM Servers
+
+Install Chromium first:
+```bash
+sudo snap install chromium
+```
+
+## Email Notifications
+
+| Scenario | Email Alert |
+|----------|-------------|
+| Absences detected | ⚠️ Peeplynx HR Alert: X Absent Day(s) |
+| Session expired | 🔐 Re-login Required |
+| Auth/Network errors | ⚠️ Error notification |
 
 ## Email Configuration (.env)
 
@@ -39,76 +93,3 @@ SMTP_USER=your-email@company.com
 SMTP_PASS=your-password
 NOTIFY_EMAIL=your-email@company.com
 ```
-
-## Email Notifications
-
-The notifier sends email alerts for:
-
-| Scenario | Email Subject |
-|----------|---------------|
-| Absences detected | ⚠️ Peeplynx HR Alert: X Absent Day(s) Detected |
-| Session expired | 🔐 Peeplynx HR Session Expired - Re-login Required |
-| Auth error (401/403) | ⚠️ Peeplynx HR Notifier - 🔐 Authentication Error |
-| Network error | ⚠️ Peeplynx HR Notifier - 🌐 Network Error |
-| Other errors | ⚠️ Peeplynx HR Notifier - ❌ Error |
-
-## Server Deployment (Cron)
-
-Since servers don't have a display for interactive login, use the portable session export:
-
-### Step 1: Login & Export (on your local machine)
-
-```bash
-# Login with Microsoft SSO + 2FA
-npm run login
-
-# Export session to portable file
-npm run export
-# Creates: session.json
-```
-
-### Step 2: Copy to Server
-
-```powershell
-# Windows PowerShell
-scp -i "~\.ssh\your-key.pem" session.json user@server:/path/to/HRMSnotifier/
-```
-
-```bash
-# Mac/Linux
-scp session.json user@server:/path/to/HRMSnotifier/
-```
-
-### Step 3: Set Up Cron on Server
-
-```bash
-# On the server (no browser needed!)
-0 9 23-27 * * cd /path/to/HRMSnotifier && npm start
-```
-
-The `session.json` file is platform-independent and works on any server (x86, ARM, any OS).
-
-### Session Refresh
-
-When session expires (you'll get an email), repeat Steps 1-2:
-1. `npm run export` on your local machine
-2. `scp session.json` to server
-
-### ARM Servers (Oracle ARM, Raspberry Pi, etc.)
-
-**No special setup needed!** With `session.json`, the server doesn't need to run a browser for normal operation.
-
-For local development on ARM, install system Chromium:
-```bash
-sudo snap install chromium
-```
-
-## Troubleshooting
-
-| Error | Email Sent? | Solution |
-|-------|-------------|----------|
-| No session found | ✅ Yes | Export session locally: `npm run export`, copy to server |
-| Session expired | ✅ Yes | Re-export: `npm run export`, copy to server |
-| 401/403 Auth error | ✅ Yes | Re-login locally, then export and copy |
-| Network error | ✅ Yes | Check internet connection |
-| SMTP failure | ❌ No | Check `.env` email settings |

@@ -1,7 +1,7 @@
 /**
  * Browser Auth Module
- * Extracts authentication tokens from a portable session.json file or browser session.
- * Supports cross-platform session sharing (login on Windows, use on Linux server).
+ * Extracts authentication tokens from a browser session.
+ * Uses the browser to auto-refresh tokens (supports both local and imported sessions).
  */
 import puppeteer from 'puppeteer';
 import path from 'path';
@@ -10,23 +10,20 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USER_DATA_DIR = path.join(__dirname, '..', '.browser-session');
-const SESSION_FILE = path.join(__dirname, '..', 'session.json');
 const HRMS_URL = 'https://hrms.pitsolutions.com/';
 
 /**
- * Detects if running on ARM architecture and returns system Chromium path if available
- * @returns {string | undefined}
+ * Detects if running on ARM architecture and returns system Chromium path
  */
 function getSystemChromiumPath() {
     const arch = process.arch;
     const platform = process.platform;
 
-    // On ARM Linux, Puppeteer's bundled Chrome doesn't work
     if (platform === 'linux' && (arch === 'arm64' || arch === 'arm')) {
         const possiblePaths = [
-            '/snap/bin/chromium',           // Snap version (Ubuntu)
-            '/usr/bin/chromium',             // Direct binary
-            '/usr/bin/chromium-browser',     // May be wrapper on Ubuntu
+            '/snap/bin/chromium',
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
         ];
 
         for (const chromePath of possiblePaths) {
@@ -36,83 +33,27 @@ function getSystemChromiumPath() {
         }
     }
 
-    return undefined; // Use Puppeteer's bundled Chrome
+    return undefined;
 }
 
 /**
- * Checks if a session exists (either portable file or browser session)
- * @returns {boolean}
+ * Checks if a browser session exists
  */
 export function hasSession() {
-    // First check for portable session file (cross-platform)
-    if (fs.existsSync(SESSION_FILE)) {
-        return true;
-    }
-    // Fall back to browser session directory
     return fs.existsSync(USER_DATA_DIR) &&
         fs.existsSync(path.join(USER_DATA_DIR, 'Default'));
 }
 
 /**
- * Extracts tokens from portable session.json file
- * @returns {{ accessToken: string, xsrfToken: string, mappingId: string } | null}
- */
-function extractTokensFromFile() {
-    if (!fs.existsSync(SESSION_FILE)) {
-        return null;
-    }
-
-    try {
-        const sessionData = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
-        const cookies = sessionData.cookies;
-
-        const hrAtk = cookies.find(c => c.name === 'hr_atk');
-        const xsrf = cookies.find(c => c.name === 'XSRF-TOKEN');
-        const hrMid = cookies.find(c => c.name === 'hr_mid');
-
-        if (!hrAtk || !xsrf) {
-            console.error('❌ Session file missing required cookies.');
-            return null;
-        }
-
-        // Check if token is expired
-        try {
-            const payload = JSON.parse(Buffer.from(hrAtk.value.split('.')[1], 'base64').toString());
-            const expires = new Date(payload.exp * 1000);
-            if (expires < new Date()) {
-                console.error('❌ Session expired. Re-export from local machine.');
-                return null;
-            }
-        } catch (e) {
-            // Ignore decode errors
-        }
-
-        console.log('✅ Tokens loaded from session.json');
-        return {
-            accessToken: hrAtk.value,
-            xsrfToken: xsrf.value,
-            mappingId: hrMid?.value || 'P4D9T6HA',
-        };
-    } catch (error) {
-        console.error('❌ Failed to read session.json:', error.message);
-        return null;
-    }
-}
-
-/**
- * Extracts tokens from the saved browser session
- * @returns {Promise<{accessToken: string, xsrfToken: string, mappingId: string} | null>}
+ * Extracts tokens from browser session (with auto-refresh)
  */
 export async function extractTokensFromBrowser() {
-    // First try portable session file (preferred for cross-platform)
-    const fileTokens = extractTokensFromFile();
-    if (fileTokens) {
-        return fileTokens;
-    }
-
-    // Fall back to browser session
-    if (!fs.existsSync(USER_DATA_DIR) || !fs.existsSync(path.join(USER_DATA_DIR, 'Default'))) {
-        console.error('❌ No session found. Run "npm run login" first.');
+    if (!hasSession()) {
+        console.error('❌ No browser session found.');
+        console.log('   Run "npm run login" locally, then:');
+        console.log('   1. npm run export (on local)');
+        console.log('   2. scp session.json to server');
+        console.log('   3. npm run import (on server)');
         return null;
     }
 
@@ -134,26 +75,33 @@ export async function extractTokensFromBrowser() {
 
     try {
         const page = await browser.newPage();
+
+        // Navigate to HRMS to trigger token refresh
         await page.goto(HRMS_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+
+        // Wait for page to fully load
         await page.waitForFunction(
             () => document.readyState === 'complete',
             { timeout: 30000 }
         );
+
+        // Small delay to ensure tokens are refreshed
         await new Promise(resolve => setTimeout(resolve, 2000));
 
+        // Extract cookies
         const cookies = await page.cookies();
         const hrAtk = cookies.find(c => c.name === 'hr_atk');
         const xsrf = cookies.find(c => c.name === 'XSRF-TOKEN');
         const hrMid = cookies.find(c => c.name === 'hr_mid');
 
+        await browser.close();
+
         if (!hrAtk || !xsrf) {
-            console.error('❌ Session expired. Run "npm run login" to re-authenticate.');
-            await browser.close();
+            console.error('❌ Session expired. Re-import session from local machine.');
             return null;
         }
 
-        await browser.close();
-        console.log('✅ Tokens extracted from browser session');
+        console.log('✅ Tokens extracted (session auto-refreshed)');
 
         return {
             accessToken: hrAtk.value,
